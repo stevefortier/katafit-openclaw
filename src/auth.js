@@ -3,7 +3,7 @@ import { Writable } from 'node:stream';
 import { saveToken } from './config.js';
 
 // Never accept a credential as an argv value (shell history/process listings).
-async function inputToken() {
+export async function inputToken() {
   if (!process.stdin.isTTY) {
     let value = '';
     for await (const chunk of process.stdin) {

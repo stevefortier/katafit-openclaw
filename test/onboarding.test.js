@@ -1,0 +1,31 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtemp, rm, readFile, stat } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
+test('configure chooses a private credential and merges host config without losing existing keys', async t => {
+  const { configure } = await import('../src/onboarding.js');
+  const stateDir = await mkdtemp(join(tmpdir(), 'katafit-configure-'));
+  t.after(() => rm(stateDir, { recursive: true, force: true }));
+  const config = { gateway: { mode: 'local' }, plugins: { allow: ['other'], entries: { other: { enabled: true }, 'katafit-coach': { config: { pollIntervalMs: 1000, tokenEnv: 'OLD_TOKEN' } } } } };
+  let afterWrite;
+  const api = { runtime: { config: { async mutateConfigFile(params) { afterWrite = params.afterWrite; await params.mutate(config); } } } };
+  let output = '';
+  await configure(api, { stateDir, input: async () => 'synthetic-configure-token', observe: async () => undefined, output: text => { output += text; } });
+  assert.deepEqual(config.plugins.allow, ['other', 'katafit-coach']);
+  assert.deepEqual(config.gateway, { mode: 'local' });
+  assert.deepEqual(config.plugins.entries.other, { enabled: true });
+  const entry = config.plugins.entries['katafit-coach'];
+  assert.equal(entry.enabled, true);
+  assert.equal(entry.config.pollIntervalMs, 1000);
+  assert.equal(entry.config.tokenEnv, undefined);
+  assert.equal((await readFile(entry.config.tokenFile, 'utf8')).trim(), 'synthetic-configure-token');
+  assert.equal((await stat(entry.config.tokenFile)).mode & 0o777, 0o600);
+  assert.equal((await stat(join(stateDir, 'katafit-coach-private'))).mode & 0o777, 0o700);
+  assert.deepEqual(afterWrite, { mode: 'auto' });
+  assert.ok(!JSON.stringify(config).includes('synthetic-configure-token'));
+  assert.ok(!output.includes('synthetic-configure-token'));
+  assert.match(output, /Worker startup: unknown/);
+  assert.match(output, /main Coach/);
+});

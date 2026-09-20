@@ -25,7 +25,7 @@ test('native katafit auth command is discoverable without starting a worker', as
   await registrar({ program });
   const command = program.commands.find(c => c.name() === 'katafit');
   assert.ok(command);
-  assert.deepEqual(command.commands.map(c => c.name()).sort(), ['auth', 'status']);
+  assert.deepEqual(command.commands.map(c => c.name()).sort(), ['auth', 'configure', 'status']);
   assert.equal(command.commands.find(c => c.name() === 'auth').registeredArguments.length, 1);
 });
 
@@ -86,4 +86,16 @@ test('credential CLI accepts stdin without placing the secret in output', async 
   assert.equal(code, 0, output);
   assert.equal(output.includes('synthetic-test-token'), false);
   assert.equal((await readFile(file, 'utf8')).trim(), 'synthetic-test-token');
+});
+
+test('missing credentials leave an installed service in actionable setup state', async () => {
+  let service, handler;
+  const warnings = [];
+  plugin.register({ registrationMode: 'full', registerCli() {}, registerGatewayMethod(_name, fn) { handler = fn; }, registerService(s) { service = s; },
+    pluginConfig: { tokenEnv: 'KATAFIT_NEVER_CONFIGURED_TEST' }, runtime: { version: '2026.9.5', llm: { complete() { assert.fail('no inference'); } } } });
+  await service.start({ logger: { warn(text) { warnings.push(text); } }, serviceHealth: { clearFailure() {}, reportFailure() { assert.fail('setup is not installation failure'); } } });
+  assert.match(warnings.join(' '), /Installed — setup required/);
+  assert.match(warnings.join(' '), /openclaw katafit configure/);
+  handler({ respond(ok, payload) { assert.equal(ok, true); assert.equal(payload.state, 'setup-required'); assert.equal(payload.running, false); } });
+  await service.stop();
 });
