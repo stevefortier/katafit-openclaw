@@ -3,7 +3,7 @@ import { Writable } from 'node:stream';
 import { saveToken } from './config.js';
 
 // Never accept a credential as an argv value (shell history/process listings).
-async function inputToken() {
+export async function inputToken() {
   if (!process.stdin.isTTY) {
     let value = '';
     for await (const chunk of process.stdin) {
@@ -12,9 +12,11 @@ async function inputToken() {
     }
     return value;
   }
-  process.stderr.write('Paste the shown-once Kata.fit credential (hidden): ');
   const muted = new Writable({ write(_chunk, _encoding, callback) { callback(); } });
   const rl = createInterface({ input: process.stdin, output: muted, terminal: true });
+  // Enter readline's raw/no-echo mode before inviting input. Printing first
+  // races fast paste/secret-manager input against the terminal echo setting.
+  process.stderr.write('Paste the shown-once Kata.fit credential (hidden): ');
   try {
     return await new Promise((resolve, reject) => {
       rl.once('line', resolve);
