@@ -1,4 +1,4 @@
-import { mkdir, lstat, unlink } from 'node:fs/promises';
+import { mkdir, lstat } from 'node:fs/promises';
 import { join, resolve, parse } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { setTimeout as sleep } from 'node:timers/promises';
@@ -46,7 +46,9 @@ export async function status(config, { observe = observeWorker, output = text =>
   try { await readToken(parseConfig(config?.plugins?.entries?.['katafit-coach']?.config)); configured = true; }
   catch { /* A readiness command must not turn an installed plugin into a failed install. */ }
   output(`${configured ? 'Credential configured (locally readable).' : setupRequired}\n`);
-  const observed = await observe();
+  let observed = await observe();
+  const expectedFile = config?.plugins?.entries?.['katafit-coach']?.config?.tokenFile;
+  if (expectedFile && observed?.running && observed.credentialFile !== expectedFile) observed = undefined;
   output(`${describeWorker(observed)}\n${nextStep}`);
 }
 
@@ -64,10 +66,13 @@ export async function configure(api, { stateDir, input = inputToken, observe = o
     await saveToken(tokenFile, token);
     token = undefined;
     await api.runtime.config.mutateConfigFile({
+      base: 'source',
       afterWrite: { mode: 'auto' },
       mutate(draft) {
         draft.plugins ??= {};
-        draft.plugins.allow = [...new Set([...(draft.plugins.allow ?? []), 'katafit-coach'])];
+        // An absent allowlist is unrestricted: creating a one-entry list
+        // would silently disable other installed plugins.
+        if (draft.plugins.allow?.length) draft.plugins.allow = [...new Set([...draft.plugins.allow, 'katafit-coach'])];
         draft.plugins.entries ??= {};
         const entry = draft.plugins.entries['katafit-coach'] ??= {};
         entry.enabled = true;
@@ -87,8 +92,9 @@ export async function configure(api, { stateDir, input = inputToken, observe = o
   for (let attempt = 0; attempt < 8; attempt++) {
     observed = await observe();
     if (observed?.credentialFile === tokenFile && observed.running) break;
-    if (!observed) break;
-    await sleep(500);
+    // A host hot reload temporarily revokes the old plugin instance/RPC.
+    // Retry unavailable observations instead of mistaking that window for stop.
+    if (attempt < 7) await sleep(500);
   }
   if (observed?.credentialFile !== tokenFile) observed = undefined;
   output(`${describeWorker(observed)}\n`);

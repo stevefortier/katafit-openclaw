@@ -29,3 +29,54 @@ test('configure chooses a private credential and merges host config without losi
   assert.match(output, /Worker startup: unknown/);
   assert.match(output, /main Coach/);
 });
+
+for (const unsafe of ['symlink', 'public-directory']) test(`configure refuses ${unsafe} without changing config`, async t => {
+  const { configure } = await import('../src/onboarding.js');
+  const { symlink, mkdir, readdir } = await import('node:fs/promises');
+  const stateDir = await mkdtemp(join(tmpdir(), 'katafit-unsafe-'));
+  t.after(() => rm(stateDir, { recursive: true, force: true }));
+  const dir = join(stateDir, 'katafit-coach-private');
+  if (unsafe === 'symlink') await symlink(stateDir, dir);
+  else await mkdir(dir, { mode: 0o755 });
+  await assert.rejects(configure({ runtime: { config: { mutateConfigFile() { assert.fail('no mutation'); } } } }, { stateDir, input: async () => 'synthetic-test-token' }), /Setup could not finish/);
+  assert.deepEqual(await readdir(stateDir), ['katafit-coach-private']);
+});
+
+test('cancelled hidden input and empty stdin cannot write host configuration', async t => {
+  const { configure } = await import('../src/onboarding.js');
+  const { readdir } = await import('node:fs/promises');
+  const stateDir = await mkdtemp(join(tmpdir(), 'katafit-cancel-'));
+  t.after(() => rm(stateDir, { recursive: true, force: true }));
+  const api = { runtime: { config: { mutateConfigFile() { assert.fail('no mutation'); } } } };
+  await assert.rejects(configure(api, { stateDir, input: async () => { throw new Error('cancelled'); } }), /Setup cancelled/);
+  assert.deepEqual(await readdir(stateDir), []);
+  await assert.rejects(configure(api, { stateDir, input: async () => '' }), /Setup could not finish/);
+});
+
+test('reconfiguration uses a new private file, preserves old credentials, and does not duplicate allowlist', async t => {
+  const { configure } = await import('../src/onboarding.js');
+  const stateDir = await mkdtemp(join(tmpdir(), 'katafit-reconfigure-'));
+  t.after(() => rm(stateDir, { recursive: true, force: true }));
+  const config = { plugins: { allow: ['other', 'katafit-coach'], entries: {} } };
+  const api = { runtime: { config: { async mutateConfigFile(p) { await p.mutate(config); } } } };
+  const opts = { stateDir, observe: async () => undefined, output() {} };
+  await configure(api, { ...opts, input: async () => 'synthetic-first-token' });
+  const first = config.plugins.entries['katafit-coach'].config.tokenFile;
+  await configure(api, { ...opts, input: async () => 'synthetic-second-token' });
+  const second = config.plugins.entries['katafit-coach'].config.tokenFile;
+  assert.notEqual(first, second);
+  assert.equal((await readFile(first, 'utf8')).trim(), 'synthetic-first-token');
+  assert.equal((await readFile(second, 'utf8')).trim(), 'synthetic-second-token');
+  assert.deepEqual(config.plugins.allow, ['other', 'katafit-coach']);
+});
+
+test('configure preserves an unrestricted absent allowlist instead of disabling unrelated plugins', async t => {
+  const { configure } = await import('../src/onboarding.js');
+  const stateDir = await mkdtemp(join(tmpdir(), 'katafit-unrestricted-'));
+  t.after(() => rm(stateDir, { recursive: true, force: true }));
+  const config = { plugins: { entries: { other: { enabled: true } } } };
+  const api = { runtime: { config: { async mutateConfigFile(p) { p.mutate(config); } } } };
+  await configure(api, { stateDir, input: async () => 'synthetic-test-token', observe: async () => undefined, output() {} });
+  assert.equal(config.plugins.allow, undefined);
+  assert.equal(config.plugins.entries.other.enabled, true);
+});

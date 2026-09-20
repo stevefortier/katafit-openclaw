@@ -12,7 +12,7 @@ The official Kata.fit plugin for **main Coach text chat**, using Kata.fit's v1 e
 - A configured OpenClaw runtime that supports **isolated agent-runtime completions**. Unsupported owners fail closed; the plugin never falls back to a normal agent/session or direct-provider request.
 - Linux/macOS owner-only credential files. The POSIX file-mode checks are not a Windows ACL implementation; use a private gateway environment variable on Windows and validate the host separately.
 
-The implementation calls the supported `api.runtime.llm.complete` with exactly one user message, request-local `systemPrompt`, `signal`, and `execution: { mode: "isolated-agent-runtime", timeoutMs }`. It verifies the returned execution mode and CLI/harness owner. It does **not** call invented `runAgent` APIs, import OpenClaw internals, add tools, reuse conversations, read memory/workspace files, register global prompt hooks, or change host configuration.
+The implementation calls the supported `api.runtime.llm.complete` with exactly one user message, request-local `systemPrompt`, `signal`, and `execution: { mode: "isolated-agent-runtime", timeoutMs }`. It verifies the returned execution mode and CLI/harness owner. It does **not** call invented `runAgent` APIs, import OpenClaw internals, add tools, reuse conversations, read memory/workspace files, register global prompt hooks, or change model/session policy. Only the explicit configure command mutates the Kata.fit plugin configuration.
 
 References: [model runtime SDK](https://docs.openclaw.ai/plugins/sdk-runtime/models), [native manifests](https://docs.openclaw.ai/plugins/manifest), [Kata.fit live contract](https://kata.fit/api/agents/coach.md).
 
@@ -32,39 +32,55 @@ openclaw plugins install npm-pack:./katafit-openclaw-0.1.0.tgz
 
 The `npm-pack:` archive path installs package dependencies in the managed plugin installation. It is the current distribution path, not `openclaw plugins install @katafit/openclaw`. OpenClaw may ask you to confirm a non-catalog install or its security policy warnings; review them rather than disabling security checks. For unattended trusted-local verification, see the supported install CLI `--force` / `--accept-capabilities` flags (and `--acknowledge-install-policy-warning` only when a reviewed warning requires it). An installation record is **not** proof that your credential or model can answer a request.
 
-## Connect a credential
+**Next:** run `openclaw katafit configure` to finish setup.
 
-1. In Kata.fit, create an external Coach credential. Outside a dojo, use **Profile**. For a dojo-owned Coach, only the **current chief** manages credentials in **Dojo settings**; members see status only. Use the required request read/claim/context/reply scopes, not proposal scope. Prefer the 30-day expiry.
-2. Copy the **shown-once** bearer credential immediately. Kata.fit retains only its hash. There is no device-code, OAuth, refresh, renewal, or automatic rotation endpoint in v1.
-3. After installing/enabling the plugin, store it privately using its native OpenClaw command:
+## Configure (one command)
+
+After installation, **Installed — setup required** is normal until a credential is configured. OpenClaw's generic “enabled” label is an activation setting, not evidence that the worker is running.
+
+1. In Kata.fit, create an external Coach credential in **Profile**, or (for the current chief only) **Dojo settings**. Use request read/claim/context/reply scopes, not proposal scope. Copy the shown-once credential; Kata.fit retains only its hash.
+2. Run:
 
    ```sh
-   openclaw katafit auth "$HOME/.config/katafit/coach-token"
+   openclaw katafit configure
    ```
 
-   `openclaw katafit --help` discovers setup commands. `openclaw katafit status` checks only local config/credential readability (not live authorization or model readiness). For source development, `node bin/auth.js` exposes the same helper. Paste at the hidden prompt. The helper creates an owner-only (`0600`) file and refuses to overwrite an existing file or follow a file symlink. It also accepts stdin for a secret-manager pipeline. **Never pass the token as a command-line argument, commit it, paste it into chat, or put it in plugin JSON.** Use a private directory, outside any OpenClaw agent workspace or synced/public repository. Anyone running as your OS user (including other in-process plugins) remains inside your trust boundary.
-4. Configure the plugin under your existing OpenClaw config, preserving other entries and allowlisted plugins:
+   Paste into the **hidden prompt**. No path selection or JSON editing is needed. A secret-manager stdin pipeline is also supported. Never put the credential in command arguments, JSON, model prompts, chat, screenshots, logs, or source control.
 
-   ```json
-   {
-     "plugins": {
-       "allow": ["katafit-coach"],
-       "entries": {
-         "katafit-coach": {
-           "enabled": true,
-           "config": {
-             "tokenFile": "/absolute/private/path/coach-token"
-           }
-         }
-       }
-     }
-   }
+   Configure chooses a unique owner-only `0600` file inside a `0700` `katafit-coach-private` directory in the active OpenClaw state directory. It rejects symlink ancestors and unsafe directory permissions. It preserves unrelated config, existing plugin entries, and every existing allowlisted plugin; an absent/empty unrestricted allowlist stays unrestricted. It enables the Kata.fit entry and uses OpenClaw's supported config mutation writer with automatic reload. Explicit host deny/global-disable policies are not bypassed.
+
+3. Read the startup report. A **running** report requires a live gateway RPC observation matching the newly configured credential file. A reload request alone is not startup success. A running gateway normally hot-reloads the plugin automatically. If no live observation can be obtained, configure reports **unknown**, not success. It does not install/start an OS service or kill another gateway. For a managed gateway run `openclaw gateway restart`; for a foreground gateway restart that foreground process, then run:
+
+   ```sh
+   openclaw katafit status
    ```
 
-   Alternatively set `"tokenEnv": "KATAFIT_COACH_TOKEN"` and provision that variable privately in the **gateway process environment**. The value is never written by this plugin to OpenClaw config. Choose one source; missing/invalid credentials fail startup. No model, auth-profile, or cross-agent override permissions are needed.
-5. Restart your OpenClaw gateway using your normal service manager. The plugin starts polling only when OpenClaw activates its background service, never during discovery/install/inspection. Confirm a real in-app main Coach request receives a visibly attributed reply before calling the integration ready.
+4. **Enable external-agent routing in Kata.fit. Send a real message in the main Coach chat. Confirm a visibly attributed external-agent reply.** Only that real reply proves end-to-end integration; installation, readable credentials, worker startup, and MCP connectivity do not.
 
-To replace an expired/revoked credential, create a new one in Kata.fit, save to a new private file, update `tokenFile`, and restart the gateway. Revoke old credentials in Kata.fit. No refresh is fabricated. Device authorization requires backend work; see [authorization roadmap](docs/authorization-roadmap.md).
+### Status meanings
+
+`openclaw katafit status` separates local credential readability from live, authenticated gateway observations:
+
+| State | Evidence / limits |
+|---|---|
+| Installed — setup required | No readable credential; run `openclaw katafit configure`. This is not failed installation. |
+| Credential configured | Locally readable private file/environment source, not proven server acceptance. |
+| Worker running | Live plugin service has started its loop. It may still fail to connect or infer. |
+| Connected to Kata.fit | Last successful MCP handshake, not a persistent connection or real app reply. |
+| Waiting for requests | Last authenticated queue poll returned no requests. No inference was performed. |
+| Temporarily backing off | Worker observed an error and is delaying its next attempt. |
+| Credential rejected or expired | Observed MCP HTTP 401/403. Exact cause (expiry, revocation, missing scopes, etc.) is unknown; check authorization in Kata.fit and reconfigure as needed. |
+| Unknown / stopped | No live gateway observation, or a live service reports stopped. Never inferred from “enabled.” |
+
+The state is read through a scoped `operator.read` gateway RPC, not a stale local status file. These checks do not send a coaching message, invoke a model, or enable routing in Kata.fit.
+
+### Rotation and advanced configuration
+
+To replace a credential, create a new one in Kata.fit and rerun `openclaw katafit configure`. Each run creates a new private file; it never overwrites or deletes prior credentials (including when a config write's outcome is ambiguous). Revoke the old credential in Kata.fit. Remove obsolete local private files only after verifying the new configuration. There is no device-code/OAuth/refresh/automatic-renewal API in v1; see [authorization roadmap](docs/authorization-roadmap.md).
+
+The legacy `openclaw katafit auth <absolute-file>` helper only writes a new file; it does **not** configure/enable/reload the plugin. Prefer `configure`. Advanced operators may instead provision `tokenEnv` privately in the **gateway process environment**, or manually set `tokenFile`. Choose one source. When editing manually, **append** `katafit-coach` to an existing nonempty `plugins.allow` list; never replace that list or unrelated entries. Then **reload/restart the gateway** and run `openclaw katafit status`.
+
+All in-process plugins and other processes running as your OS user remain in the host trust boundary. Private file modes are not a sandbox. Keep the OpenClaw state directory outside agent workspaces and public/synced folders.
 
 ## Runtime and safety
 
@@ -102,12 +118,12 @@ npm pack --dry-run
 
 Tests use a **local synthetic HTTP MCP server**, real MCP client/server protocol lifecycle, fake credentials, and a synthetic completion function at the OpenClaw boundary. They cover requester-scoped prompts, no idle inference, successful response, failures, lease limits, safe errors, polling backoff, cancellation, and secure file onboarding. They do not claim production inference, real app delivery, or subscription eligibility was verified. The private Kata.fit backend source and any user data are not included.
 
-CI also installs the packed tarball into a clean OpenClaw 2026.9.5 state directory and exercises the native `katafit auth` and `katafit status` commands with a synthetic credential. Run the same check locally after `npm pack`:
+CI also installs the packed tarball into a clean OpenClaw 2026.9.5 state directory and exercises the native `katafit configure` and `katafit status` commands with a synthetic credential. Run the same check locally after `npm pack`:
 
 ```sh
 node scripts/verify-install.mjs /path/to/openclaw/openclaw.mjs ./katafit-openclaw-0.1.0.tgz
 ```
 
-This check removes its temporary state and does not start a gateway or use your provider credentials. Separately, local integration verification exercised the actual packed plugin in an OpenClaw gateway against Kata.fit's real MCP route with synthetic service data and a local model-provider fixture: list → claim → start → context → model → respond. The provider payload had no tools, bearer credential, or private workspace-memory sentinel. That is host/transport integration evidence, **not** production inference or a real user's in-app reply.
+This check uses a temporary HOME and minimal environment, starts only its own foreground loopback gateway against a synthetic MCP server, verifies automatic reload and idle state, then stops that process and removes its state. It never uses provider credentials, installs an OS service, or restarts a live gateway. Separately, local integration verification exercised the actual packed plugin in an OpenClaw gateway against Kata.fit's real MCP route with synthetic service data and a local model-provider fixture: list → claim → start → context → model → respond. The provider payload had no tools, bearer credential, or private workspace-memory sentinel. That is host/transport integration evidence, **not** production inference or a real user's in-app reply.
 
-The public SDK was checked against npm `openclaw@2026.9.5` (build `ec9c1a1`): `dist/runtime-api-wzmGBys0.d.ts` defines `LlmIsolatedAgentRuntimeCompleteParams` and `OpenClawPluginService`; `dist/runtime-llm.runtime-DQtXZfQr.mjs` implements isolated runtime dispatch. These are **research references**, not imports. Only injected public runtime APIs are used.
+The public SDK was checked against npm `openclaw@2026.9.5` (build `ec9c1a1`): `dist/runtime-api-wzmGBys0.d.ts` defines `LlmIsolatedAgentRuntimeCompleteParams` and `OpenClawPluginService`; `dist/runtime-llm.runtime-DQtXZfQr.mjs` implements isolated runtime dispatch. These are **research references**, not imports. Only injected public runtime APIs and public SDK exports are used. See [onboarding SDK evidence](docs/onboarding-sdk.md).

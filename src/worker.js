@@ -2,7 +2,7 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 
-const SAFE_CODES = new Set(['CONTRACT_UNSUPPORTED', 'CONTRACT_UNAVAILABLE', 'MCP_TOOL_FAILED', 'LEASE_EXPIRED', 'CONTEXT_REJECTED', 'OUTPUT_REJECTED', 'RUNTIME_REJECTED', 'WORKER_STOPPED', 'WORKER_TIMEOUT']);
+const SAFE_CODES = new Set(['CREDENTIAL_REJECTED', 'CONTRACT_UNSUPPORTED', 'CONTRACT_UNAVAILABLE', 'MCP_TOOL_FAILED', 'LEASE_EXPIRED', 'CONTEXT_REJECTED', 'OUTPUT_REJECTED', 'RUNTIME_REJECTED', 'WORKER_STOPPED', 'WORKER_TIMEOUT']);
 const safeError = error => new Error(SAFE_CODES.has(error?.message) ? error.message : 'COACH_WORKER_FAILED');
 
 async function limitedFetch(url, init, maxBytes) {
@@ -53,7 +53,11 @@ export function createWorker(options) {
     const client = new Client({ name: 'katafit-openclaw', version: '0.1.0' });
     const transport = new StreamableHTTPClientTransport(new URL(options.endpoint), {
       requestInit: { headers: { Authorization: `Bearer ${options.token}` } },
-      fetch: (url, init) => limitedFetch(url, { ...init, redirect: 'error', signal: AbortSignal.any([signal, init?.signal, AbortSignal.timeout(options.httpTimeoutMs)].filter(Boolean)) }, 1048576),
+      fetch: async (url, init) => {
+        const response = await limitedFetch(url, { ...init, redirect: 'error', signal: AbortSignal.any([signal, init?.signal, AbortSignal.timeout(options.httpTimeoutMs)].filter(Boolean)) }, 1048576);
+        if ([401, 403].includes(response.status)) { await response.body?.cancel(); throw new Error('CREDENTIAL_REJECTED'); }
+        return response;
+      },
     });
     let fence;
     let deadline = 0;
@@ -66,8 +70,10 @@ export function createWorker(options) {
     }, signal, budget);
     try {
       await bounded(s => client.connect(transport, { signal: s, timeout: options.httpTimeoutMs }), signal, options.httpTimeoutMs);
+      options.onState?.('connected');
       const listed = await call('coach_list_requests', { limit: 10 });
-      if (!listed.requests.length) return;
+      if (!listed.requests.length) { options.onState?.('idle'); return; }
+      options.onState?.('running');
       const instructions = await bounded(async s => {
         const response = await limitedFetch(options.instructionsUrl, { redirect: 'error', signal: s }, 65536);
         if (!response.ok) throw new Error('CONTRACT_UNAVAILABLE');
@@ -118,7 +124,10 @@ export function createWorker(options) {
         if (!controller.signal.aborted) options.onHealthy?.();
         backoff = options.pollIntervalMs;
       } catch (error) {
-        if (!controller.signal.aborted) options.onError?.(safeError(error));
+        if (!controller.signal.aborted) {
+          options.onState?.(error.message === 'CREDENTIAL_REJECTED' ? 'rejected-expired' : 'backoff');
+          options.onError?.(safeError(error));
+        }
         backoff = Math.min(options.maxBackoffMs, backoff * 2);
       }
       await sleep(backoff, undefined, { signal: controller.signal }).catch(() => {});

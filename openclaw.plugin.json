@@ -4,7 +4,7 @@
   "cliCommands": [{ "name": "katafit", "description": "Kata.fit Coach setup and status", "hasSubcommands": true }],
   "activation": { "onStartup": true, "onCommands": ["katafit"] },
   "version": "0.1.0",
-  "description": "Background polling for requester-isolated main Coach text replies",
+  "description": "Main Coach text worker. Finish setup: openclaw katafit configure",
   "configSchema": {
     "type": "object",
     "additionalProperties": false,
@@ -74,7 +74,7 @@
   "uiHints": {
     "tokenFile": {
       "label": "Private credential file",
-      "help": "Absolute path to an owner-only credential file. Never paste a token here."
+      "help": "Set automatically by openclaw katafit configure. Advanced: absolute owner-only credential file. Never paste a token here."
     },
     "tokenEnv": {
       "label": "Credential environment variable name",

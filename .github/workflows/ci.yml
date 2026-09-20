@@ -21,7 +21,7 @@ jobs:
       - run: npm pack
       - name: Install a pinned OpenClaw test host
         run: npm install --prefix "$RUNNER_TEMP/katafit-host" --ignore-scripts --no-audit --no-fund openclaw@2026.9.5
-      - name: Verify the packed plugin and native CLI in isolated state
+      - name: Verify packed native configure, setup state, and live reload in isolated HOME
         run: node scripts/verify-install.mjs "$RUNNER_TEMP/katafit-host/node_modules/openclaw/openclaw.mjs" katafit-openclaw-0.1.0.tgz
       - uses: actions/upload-artifact@v4
         with:
