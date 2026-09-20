@@ -1,0 +1,26 @@
+{
+  "name": "katafit-openclaw",
+  "displayName": "Kata.fit OpenClaw Plugin",
+  "description": "Official Kata.fit plugin for OpenClaw with secure authentication, automatic message delivery, and up-to-date coaching instructions.",
+  "version": "1.0.0",
+  "provider": "Kata.fit",
+  "baseUrl": "${KATAFIT_API_URL:https://api.kata.fit}",
+  "authentication": {
+    "type": "bearer",
+    "env": "KATAFIT_API_KEY",
+    "header": "Authorization",
+    "prefix": "Bearer "
+  },
+  "capabilities": {
+    "messageDelivery": {
+      "method": "POST",
+      "path": "/v1/openclaw/messages",
+      "description": "Delivers agent and coach messages automatically."
+    },
+    "coachingInstructions": {
+      "method": "GET",
+      "path": "/v1/openclaw/instructions",
+      "description": "Fetches latest coaching instructions."
+    }
+  }
+}
