@@ -1,0 +1,30 @@
+name: Test and package
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.16.0'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm test
+      - run: npm run check
+      - run: npm audit --omit=dev
+      - run: npm pack --dry-run
+      - run: npm pack
+      - name: Install a pinned OpenClaw test host
+        run: npm install --prefix "$RUNNER_TEMP/katafit-host" --ignore-scripts --no-audit --no-fund openclaw@2026.9.5
+      - name: Verify the packed plugin and native CLI in isolated state
+        run: node scripts/verify-install.mjs "$RUNNER_TEMP/katafit-host/node_modules/openclaw/openclaw.mjs" katafit-openclaw-0.1.0.tgz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: katafit-openclaw-tarball
+          path: '*.tgz'
+          if-no-files-found: error

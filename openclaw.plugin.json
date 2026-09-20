@@ -1,0 +1,88 @@
+{
+  "id": "katafit-coach",
+  "name": "Kata.fit Coach",
+  "cliCommands": [{ "name": "katafit", "description": "Kata.fit Coach setup and status", "hasSubcommands": true }],
+  "activation": { "onStartup": true, "onCommands": ["katafit"] },
+  "version": "0.1.0",
+  "description": "Background polling for requester-isolated main Coach text replies",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "tokenFile": {
+        "type": "string",
+        "minLength": 1
+      },
+      "tokenEnv": {
+        "type": "string",
+        "pattern": "^[A-Z_][A-Z0-9_]{0,127}$"
+      },
+      "endpoint": {
+        "type": "string"
+      },
+      "instructionsUrl": {
+        "type": "string"
+      },
+      "allowInsecureLoopback": {
+        "type": "boolean",
+        "default": false
+      },
+      "pollIntervalMs": {
+        "type": "integer",
+        "minimum": 1000,
+        "maximum": 300000,
+        "default": 15000
+      },
+      "maxBackoffMs": {
+        "type": "integer",
+        "minimum": 1000,
+        "maximum": 900000,
+        "default": 120000
+      },
+      "httpTimeoutMs": {
+        "type": "integer",
+        "minimum": 100,
+        "maximum": 30000,
+        "default": 10000
+      },
+      "modelTimeoutMs": {
+        "type": "integer",
+        "minimum": 100,
+        "maximum": 240000,
+        "default": 90000
+      },
+      "leaseSeconds": {
+        "type": "integer",
+        "minimum": 15,
+        "maximum": 300,
+        "default": 180
+      },
+      "safetyMarginMs": {
+        "type": "integer",
+        "minimum": 100,
+        "maximum": 30000,
+        "default": 5000
+      }
+    },
+    "not": {
+      "required": [
+        "tokenEnv",
+        "tokenFile"
+      ]
+    }
+  },
+  "uiHints": {
+    "tokenFile": {
+      "label": "Private credential file",
+      "help": "Absolute path to an owner-only credential file. Never paste a token here."
+    },
+    "tokenEnv": {
+      "label": "Credential environment variable name",
+      "help": "Name only; defaults to KATAFIT_COACH_TOKEN."
+    },
+    "allowInsecureLoopback": {
+      "label": "Synthetic local testing only",
+      "advanced": true
+    }
+  }
+}
