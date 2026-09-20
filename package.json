@@ -1,0 +1,50 @@
+{
+  "name": "@katafit/openclaw",
+  "version": "0.1.0",
+  "description": "Kata.fit main Coach background worker for OpenClaw",
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=24.16.0 <25 || >=26.1.0"
+  },
+  "files": [
+    "index.js",
+    "src",
+    "bin",
+    "openclaw.plugin.json",
+    "README.md",
+    "LICENSE",
+    "docs"
+  ],
+  "bin": {
+    "katafit-coach-auth": "bin/auth.js"
+  },
+  "openclaw": {
+    "extensions": [
+      "./index.js"
+    ]
+  },
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "check": "node --check index.js && node --check src/worker.js && node --check src/config.js && node --check src/auth.js && node --check bin/auth.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.30.0"
+  },
+  "peerDependencies": {
+    "openclaw": "2026.9.5"
+  },
+  "peerDependenciesMeta": {
+    "openclaw": {
+      "optional": true
+    }
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/stevefortier/katafit-openclaw.git"
+  },
+  "devDependencies": {
+    "commander": "15.0.0",
+    "zod": "4.6.5"
+  }
+}
