@@ -8,7 +8,7 @@ Official Kata.fit plugin for OpenClaw — connect your agent as your fitness coa
 
 ## Files
 
-- `/home/runner/work/katafit-openclaw/katafit-openclaw/openclaw.plugin.json`  
+- `openclaw.plugin.json`  
   OpenClaw plugin metadata and runtime contract.
 
 ## Configuration
